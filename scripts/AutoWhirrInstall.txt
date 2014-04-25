@@ -1,0 +1,74 @@
+sudo mkdir $javaPath
+sudo wget -O $javaPath/java.tar.gz "http://javadl.sun.com/webapps/download/AutoDL?BundleId=81812"
+sudo mkdir $javaPath/jre
+sudo tar -zxvf $javaPath/java.tar.gz -C $javaPath/jre
+sudo update-alternatives --install /usr/bin/java java  $javaPath/jre/jre1.7.0_45/bin/java 10
+sudo update-alternatives --install /usr/bin/javaws javaws  $javaPath/jre/jre1.7.0_45/bin/javaws 10
+sudo update-alternatives --install /usr/bin/jar jar  $javaPath/jre/jre1.7.0_45/bin/jar 10
+
+wget http://apache.lehtivihrea.org/whirr/stable/whirr-0.8.2.tar.gz
+tar -xvf whirr-0.8.2.tar.gz -C $homePath
+
+#change ownership of keys
+chown $loginUser $homePath/.ssh/whirr_id_rsa*
+
+mkdir $whirrPath/functions
+
+#change install jdk function to accept cookie before download
+cp $whirrPath/core/src/main/resources/functions/install_oracle_jdk7.sh $whirrPath/functions
+ 
+# replace curl command with curl command with accepted cookie for downloading
+sed -i 's/curl $url/curl $url -b "oraclelicense=accept-securebackup-cookie"/g' $whirrPath/functions/install_oracle_jdk7.sh
+
+cp $homePath/whirr-0.8.2/services/cdh/src/main/resources/functions/start_cdh_yarn.sh $homePath/whirr-0.8.2/functions
+
+#remove last close bracket
+sed -i 's/}//g' $homePath/whirr-0.8.2/functions/start_cdh_yarn.sh
+
+echo "sleep 60 # wait for yarn being started
+  echo 'Slept and now download Stratopshere'
+  #download stratopshere yarn
+  wget http://stratosphere-bin.s3-website-us-east-1.amazonaws.com/stratosphere-dist-0.5-SNAPSHOT-yarn.tar.gz
+
+  #untar stratopshere yarn
+tar xvzf stratosphere-dist-0.5-SNAPSHOT-yarn.tar.gz -C $homePath/
+
+ #go to stratopshere directory
+ cd $homePath/stratosphere-yarn-0.5-SNAPSHOT
+
+echo 'The CDN hadoop installation does not set HADOOP_HOME so it will be set now!'
+export HADOOP_HOME=/usr/lib/hadoop
+
+  echo 'Start Stratosphere'
+ #start yarn session
+ nohup ./bin/yarn-session.sh -n 2 -jm 1024 -tm 1024 -v >> stratosphere_yarn_session.log &
+}" >> $homePath/whirr-0.8.2/functions/start_cdh_yarn.sh
+
+
+
+echo "whirr.cluster-name=hadoopcluster
+whirr.cluster-user=$loginUser
+whirr.instance-templates=1 hadoop-namenode+yarn-resourcemanager+mapreduce-historyserver,1 hadoop-datanode+yarn-nodemanager
+whirr.provider=aws-ec2
+whirr.identity=
+whirr.credential=
+whirr.private-key-file=/home/ubuntu/.ssh/whirr_id_rsa
+whirr.public-key-file=/home/ubuntu/.ssh/whirr_id_rsa.pub
+whirr.env.MAPREDUCE_VERSION=2
+whirr.env.repo=cdh4
+whirr.java.install-function=install_oracle_jdk7
+whirr.hadoop.install-function=install_cdh_hadoop
+whirr.hadoop.configure-function=configure_cdh_hadoop
+whirr.mr_jobhistory.start-function=start_cdh_mr_jobhistory
+whirr.yarn.configure-function=configure_cdh_yarn
+whirr.yarn.start-function=start_cdh_yarn
+whirr.hardware-id=m1.small
+whirr.image-id=eu-west-1/ami-808675f7
+whirr.location-id=eu-west-1
+jclouds.compute.timeout.node-terminated=240000" >> $whirrPath/hadoop.properties
+
+#change ownership of whirr directory
+chown -R $loginUser $whirrPath
+
+cd $whirrPath
+sudo -u ubuntu ./bin/whirr launch-cluster --config hadoop.properties >> launch.log &
